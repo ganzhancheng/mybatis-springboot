@@ -1,5 +1,7 @@
 package com.winterchen.model;
 
+import com.winterchen.ExcelField;
+
 import javax.persistence.Column;
 import javax.persistence.Id;
 import javax.persistence.Table;
@@ -9,8 +11,10 @@ import java.util.Date;
 public class Lottery {
     @Id
     @Column(name = "issue_no")
+    @ExcelField(name = "期号")
     private String issueNo;
 
+    @ExcelField(name = "开奖号码")
     @Column(name = "lottery_open")
     private String lotteryOpen;
 
