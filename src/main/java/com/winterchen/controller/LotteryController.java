@@ -2,13 +2,19 @@ package com.winterchen.controller;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import com.winterchen.ExcelUtil;
 import com.winterchen.HttpUtil;
 import com.winterchen.dao.LotteryMapper;
+import com.winterchen.dao.MoneyMapper;
 import com.winterchen.model.Lottery;
 import com.winterchen.model.LotteryExample;
+import com.winterchen.model.Money;
+import com.winterchen.model.MoneyExample;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,10 +23,12 @@ import tk.mybatis.mapper.entity.Example;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 //@EnableScheduling
@@ -30,6 +38,57 @@ public class LotteryController {
 
     @Autowired
     LotteryMapper lotteryMapper;
+
+    @Autowired
+    MoneyMapper moneyMapper;
+
+    static int count1;
+
+    @RequestMapping("get")
+    public List<Lottery> get(Integer count) {
+        if (count != null) {
+            count1 = count;
+        }else{
+            count1 -= 1;
+        }
+        List<Lottery> lotteries = lotteryMapper.selectLottery(count1);
+        return lotteries;
+    }
+
+    @RequestMapping("bet")
+    public Money bet(String bet,String result){
+        PageHelper.startPage(1, 1);
+        MoneyExample example = new MoneyExample();
+        example.setOrderByClause("id desc");
+        List<Money> monies = moneyMapper.selectByExample(example);
+        Money money = monies.get(0);
+
+        Double money1 = money.getMoney();
+        Double amount = money.getAmount();
+        if (!money.getBet().equals(money.getResult())) {
+            amount = 3 * amount;
+        }else {
+            amount = 1D;
+        }
+        if (bet.equals(result)) {
+            money1 += amount * 0.97;
+        }else{
+            money1 -= amount;
+        }
+
+        money.setBet(bet);
+        money.setResult(result);
+        money.setMoney(money1);
+        money.setAmount(amount);
+        money.setId(null);
+        moneyMapper.insert(money);
+
+        return money;
+
+
+
+    }
+
 
     @RequestMapping("import")
     public void importExcel(MultipartFile file) throws Exception {
@@ -67,6 +126,7 @@ public class LotteryController {
     @RequestMapping("cal")
     public Map<String,Object> cal(String value,String type,String date){
         LotteryExample lotteryExample = new LotteryExample();
+        lotteryExample.setOrderByClause("issue_no asc");
         if (StringUtils.isNotBlank(date)) {
             lotteryExample.createCriteria().andIssueNoLike("%"+date+"%");
         }
@@ -75,10 +135,14 @@ public class LotteryController {
         List<List> arrayList = new ArrayList<>();
         LinkedList<String> link = new LinkedList<>();
 
+        int i =1;
         for (Lottery lottery : lotteries) {
             if ("1".equals(type) && ("单".equals(value) || "双".equals(value))) {
                 if (lottery.getOdd().equals(value)) {
                     list.add(value);
+                    if (i == lotteries.size()) {
+                        arrayList.add(list);
+                    }
                 }else{
                     arrayList.add(list);
                     list = new ArrayList<>();
@@ -87,6 +151,9 @@ public class LotteryController {
             if ("1".equals(type) && ("大".equals(value) || "小".equals(value))) {
                 if (lottery.getBig().equals(value)) {
                     list.add(value);
+                    if (i == lotteries.size()) {
+                        arrayList.add(list);
+                    }
                 }else{
                     arrayList.add(list);
                     list = new ArrayList<>();
@@ -103,6 +170,9 @@ public class LotteryController {
 
                 if (!odd.equals(last)) {
                     link.add(odd);
+                    if (i == lotteries.size()) {
+                        arrayList.add(list);
+                    }
                 }else {
                     arrayList.add(link);
                     link = new LinkedList<>();
@@ -120,13 +190,16 @@ public class LotteryController {
 
                 if (!big.equals(last)) {
                     link.add(big);
+                    if (i == lotteries.size()) {
+                        arrayList.add(list);
+                    }
                 }else {
                     arrayList.add(link);
                     link = new LinkedList<>();
                 }
-
-
             }
+
+            i++;
         }
 
         HashMap<List, Integer> map = new HashMap<>();
@@ -153,6 +226,7 @@ public class LotteryController {
             map1.put("key", key.toString());
             map1.put("size", key.size());
             map1.put("count", value1);
+
             arrayList1.add(map1);
             int count = key.size() * value1;
             sum += count;
@@ -167,68 +241,6 @@ public class LotteryController {
     }
 
 
-    //@Scheduled(fixedRate = 600000)
-    public void test() throws InterruptedException {
-        HashMap<String, String> map = new HashMap<>();
-        String[] isnew = {"da865604-8106-4f0f-b3af-d6daed05ffc1c","1328cef4-f2c2-4254-a427-b837acdfb519k","6455a472-1272-4c38-b836-5d69cd67e8b9k","e13cd72d-d276-4d83-baa1-81d58c5123fde"};
-        Random random = new Random();
-        int i1 = random.nextInt(isnew.length);
-
-        map.put("Action", "GetLotteryOpen");
-        map.put("LotteryCode", 1407+"");
-        map.put("IssueNo", 0+"");
-        map.put("DataNum", 20+"");
-        map.put("SourceType", 1+"");
-        map.put("isNew","e13cd72d-d276-4d83-baa1-81d58c5123fde");
-
-        String post = HttpUtil.post("http://62zc.vip/api/GetLotteryOpen", map);
-        JSONObject jsonObject = JSONObject.parseObject(post);
-        JSONArray backData = jsonObject.getJSONArray("BackData");
-        int j = 0;
-        while (backData == null ) {
-            TimeUnit.SECONDS.sleep(2);
-
-            j++;
-            map.put("isNew",isnew[random.nextInt(isnew.length)]);
-            post = HttpUtil.post("http://62zc.vip/api/GetLotteryOpen", map);
-            jsonObject = JSONObject.parseObject(post);
-            backData = jsonObject.getJSONArray("BackData");
-        }
-        for (Object object : backData) {
-            JSONObject jb = (JSONObject) object;
-            String issueNo = jb.getString("IssueNo");
-            String lotteryOpen = jb.getString("LotteryOpen");
-            Date openTime = jb.getDate("OpenTime");
-
-            String[] split = lotteryOpen.split(",");
-            int total = 0;
-            for (String s : split) {
-                int i = Integer.parseInt(s);
-                total = total + i;
-            }
-
-            Lottery lottery = new Lottery();
-            lottery.setOpenTime(openTime);
-            lottery.setIssueNo(issueNo);
-            lottery.setLotteryOpen(lotteryOpen);
-            if (total % 2 == 0) {
-                lottery.setOdd("双");
-            }else{
-                lottery.setOdd("单");
-            }
-            if (total <= 10) {
-                lottery.setBig("小");
-            }else {
-                lottery.setBig("大");
-            }
-
-            try {
-                lotteryMapper.insert(lottery);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
 
 }
